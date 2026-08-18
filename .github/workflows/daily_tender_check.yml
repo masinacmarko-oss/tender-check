@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Pokreće se svakog dana u 06:00 UTC
-    # To je 08:00 ljeti u Crnoj Gori
-    # i 07:00 zimi
     - cron: "0 6 * * *"
 
 jobs:
+
   tender-check:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -22,12 +22,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Upgrade pip
-        run: |
-          python -m pip install --upgrade pip
-
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run CEJN Tender Monitor
