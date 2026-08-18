@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Svaki dan u 06:00 UTC
-    # Ljeti u Crnoj Gori = 08:00
-    # Zimi u Crnoj Gori = 07:00
+    # Pokreće se svakog dana u 06:00 UTC
+    # To je 08:00 ljeti u Crnoj Gori
+    # i 07:00 zimi
     - cron: "0 6 * * *"
 
 jobs:
@@ -26,15 +26,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Install Playwright Chromium
-        run: |
-          playwright install --with-deps chromium
-
-      - name: Run CEJN tender check
+      - name: Run CEJN Tender Monitor
         env:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
