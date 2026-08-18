@@ -1,32 +1,43 @@
 name: Daily Tender Check
 
 on:
+  workflow_dispatch:
+
   schedule:
-    # Pokreće se svaki dan u 8:00 ujutru po našem vremenu
-    - cron: '0 7 * * *'  # 7:00 UTC = 8:00 po našem vremenu (zimi)
-  workflow_dispatch:  # Omogućava ručno pokretanje
+    # Svaki dan u 06:00 UTC
+    # Ljeti u Crnoj Gori = 08:00
+    # Zimi u Crnoj Gori = 07:00
+    - cron: "0 6 * * *"
 
 jobs:
-  check-tenders:
+  tender-check:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests
-    
-    - name: Run tender check
-      env:
-        EMAIL_USER: ${{ secrets.EMAIL_USER }}
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-        RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-      run: python daily_tender_check.py
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: |
+          playwright install --with-deps chromium
+
+      - name: Run CEJN tender check
+        env:
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python daily_tender_check.py
