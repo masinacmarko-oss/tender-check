@@ -13,30 +13,120 @@ class Config:
     # Email podesavanja
     SMTP_SERVER = 'smtp.gmail.com'
     SMTP_PORT = 587
-    EMAIL_USER = os.environ.get('EMAIL_USER', 'tvoj.email@gmail.com')
-    EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', 'tvoj-app-password')
-    RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', 'tvoj.email@gmail.com')
+    EMAIL_USER = os.environ.get('EMAIL_USER', 'masinacmarko@gmail.com')
+    EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')
+    RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', 'masinacmarko@gmail.com')
     
-    # Ključne reči za filtriranje
+    # Ključne reči za filtriranje - prilagođeno za Crnu Goru
     KEYWORDS = [
+        # Mašinske instalacije
         'mašinske instalacije',
+        'mašinska instalacija',
         'machine installation',
         'mechanical installation',
-        'HVAC',
-        'ventilacija',
+        'masinske instalacije',
+        'masinska instalacija',
+        
+        # HVAC sistemi
+        'hvac',
+        'klimatizacija',
         'klima instalacije',
+        'klima uređaji',
+        'klima uredjaji',
+        'klima sistemi',
+        'klima komore',
+        'ventilacija',
+        'ventilacioni sistem',
+        'ventilacioni kanali',
+        'ventilatorske jedinice',
+        'klima komora',
+        
+        # Grijanje
+        'grijanje',
         'grejanje',
+        'centralno grijanje',
+        'centralno grejanje',
+        'toplotne pumpe',
+        'toplotna pumpa',
+        'kotlarnica',
+        'kotlovi',
+        'kotao',
+        'radijatori',
+        'podno grijanje',
+        'podno grejanje',
+        'toplovod',
+        'toplotna stanica',
+        'toplotne podstanice',
+        'gasni kotlovi',
+        'električno grijanje',
+        'elektricno grijanje',
+        
+        # Vodovod i kanalizacija
         'vodovod',
         'kanalizacija',
+        'cjevovod',
+        'cevovod',
+        'cjevovodi',
         'cevovodi',
+        'sanitarne instalacije',
+        'sanitarije',
+        'vodovodne instalacije',
+        'kanalizacione instalacije',
+        
+        # Oprema
         'pumpe',
+        'pumpa',
         'kompresori',
+        'kompresor',
+        'izmjenjivači toplote',
+        'izmjenjivaci toplote',
+        'rashladni sistemi',
+        'rashladne mašine',
+        'rashladni uređaji',
+        'rashladni uredjaji',
+        'klima komore',
+        'ventilatori',
+        'filteri za ventilaciju',
+        'rekuperatori',
+        'rekuperacija',
+        
+        # Industrijske instalacije
         'industrijske instalacije',
         'procesna oprema',
         'termotehnika',
+        'termotehničke instalacije',
+        'termotehnicke instalacije',
         'gasne instalacije',
+        'gasni sistemi',
+        'industrijska ventilacija',
+        
+        # Usluge
         'montaža',
+        'montaza',
         'održavanje',
+        'odrzavanje',
+        'servisiranje',
+        'ugradnja',
+        'instalacija',
+        'demontaža',
+        'demontaza',
+        
+        # Dodatni pojmovi
+        'energetska efikasnost',
+        'energetska obnova',
+        'termoizolacija',
+        'toplotna izolacija',
+        'vazdušno grijanje',
+        'vazdusno grijanje',
+        'konvektori',
+        'toplotni agregati',
+        'rashladni agregati',
+        'čiler',
+        'chiller',
+        'vršna rashladna',
+        'klima centrala',
+        'fan coil',
+        'ventilokonvektor',
     ]
 
 def setup_logging():
@@ -65,38 +155,62 @@ def save_processed_tenders(processed_tenders: set):
     with open('processed_tenders.json', 'w') as f:
         json.dump(list(processed_tenders), f)
 
-def fetch_tenders_from_portal() -> List[Dict]:
-    """Preuzima tendere sa Portala javnih nabavki"""
+def fetch_tenders_from_cejn() -> List[Dict]:
+    """Preuzima tendere sa CEJN portala Crne Gore"""
     try:
-        # Portal javnih nabavki API
-        url = 'https://portal.ujn.gov.rs/api/tenders'
+        # CEJN API endpoint - pokušavamo različite opcije
+        urls = [
+            'https://cejn.gov.me/api/tenders',
+            'https://cejn.gov.me/api/tenderi',
+            'https://cejn.gov.me/tenders/json',
+            'https://cejn.gov.me/api/public-tenders',
+        ]
         
-        # Datum od juče
-        date_from = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'sr,en;q=0.9',
+        }
         
-        response = requests.get(
-            url,
-            params={
-                'date_from': date_from,
-                'status': 'active'
-            },
-            timeout=30,
-            headers={
-                'User-Agent': 'Mozilla/5.0',
-                'Accept': 'application/json'
-            }
-        )
+        for url in urls:
+            try:
+                response = requests.get(url, headers=headers, timeout=15)
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list):
+                        return data
+                    elif isinstance(data, dict):
+                        # Pokušaj različite strukture
+                        for key in ['tenders', 'tenderi', 'data', 'items', 'results']:
+                            if key in data and isinstance(data[key], list):
+                                return data[key]
+                logger.info(f"URL ne radi: {url} - Status: {response.status_code}")
+            except:
+                continue
         
-        if response.status_code == 200:
-            data = response.json()
-            # Prilagodi prema stvarnoj strukturi API-ja
-            return data if isinstance(data, list) else data.get('tenders', [])
-        else:
-            logger.error(f"Greška pri preuzimanju: {response.status_code}")
-            return []
+        # Ako API ne radi, pokušaj web scraping
+        logger.warning("API ne radi, pokušavam web scraping...")
+        return scrape_cejn_website()
             
     except Exception as e:
         logger.error(f"Greška pri preuzimanju tendera: {e}")
+        return []
+
+def scrape_cejn_website() -> List[Dict]:
+    """Web scraping CEJN sajta ako API ne radi"""
+    try:
+        url = 'https://cejn.gov.me/tenderi'
+        response = requests.get(url, timeout=30, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        })
+        
+        # Ovdje bi trebalo parsirati HTML sajt
+        # Ovo je placeholder - treba prilagoditi stvarnoj strukturi sajta
+        logger.warning("Web scraping još nije implementiran za CEJN")
+        return []
+        
+    except Exception as e:
+        logger.error(f"Greška pri scraping-u: {e}")
         return []
 
 def filter_tenders(tenders: List[Dict], processed_tenders: set) -> List[Dict]:
@@ -108,10 +222,14 @@ def filter_tenders(tenders: List[Dict], processed_tenders: set) -> List[Dict]:
         tender_text = ' '.join([
             str(tender.get('name', '')),
             str(tender.get('title', '')),
+            str(tender.get('naslov', '')),
             str(tender.get('description', '')),
+            str(tender.get('opis', '')),
             str(tender.get('category', '')),
+            str(tender.get('kategorija', '')),
             str(tender.get('cpv_code', '')),
             str(tender.get('type', '')),
+            str(tender.get('tip', '')),
         ]).lower()
         
         # Proveri da li tender sadrži ključne reči
@@ -131,42 +249,41 @@ def send_email(tenders: List[Dict]):
         logger.info("Nema novih tendera za slanje")
         return False
         
-    subject = f"🔔 {len(tenders)} novih tendera za mašinske instalacije - {datetime.now().strftime('%d.%m.%Y')}"
+    subject = f"🔔 {len(tenders)} novih tendera za mašinske instalacije - CEJN {datetime.now().strftime('%d.%m.%Y')}"
     
-    # Kreiraj HTML sadržaj
     body = f"""
     <html>
     <body style="font-family: Arial, sans-serif;">
         <h2 style="color: #2c3e50;">Pronađeni novi tenderi za mašinske instalacije</h2>
+        <p>Portal: CEJN - Crna Gora</p>
         <p>Datum provere: {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
         <hr style="border: 1px solid #eee;">
     """
     
     for i, tender in enumerate(tenders, 1):
-        deadline = tender.get('deadline', tender.get('end_date', 'N/A'))
-        url = tender.get('url', tender.get('link', '#'))
+        deadline = tender.get('deadline', tender.get('end_date', tender.get('rok', 'N/A')))
+        url = tender.get('url', tender.get('link', 'https://cejn.gov.me'))
         
         body += f"""
         <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
-            <h3 style="color: #34495e; margin-top: 0;">{i}. {tender.get('name', tender.get('title', 'Nepoznat tender'))}</h3>
+            <h3 style="color: #34495e; margin-top: 0;">{i}. {tender.get('name', tender.get('title', tender.get('naslov', 'Nepoznat tender')))}</h3>
             <p><strong>📋 ID:</strong> {tender.get('id', 'N/A')}</p>
-            <p><strong>📝 Opis:</strong> {str(tender.get('description', 'Nema opisa'))[:300]}...</p>
+            <p><strong>📝 Opis:</strong> {str(tender.get('description', tender.get('opis', 'Nema opisa')))[:300]}...</p>
             <p><strong>⏰ Rok za prijavu:</strong> {deadline}</p>
-            <p><strong>💰 Vrednost:</strong> {tender.get('value', 'Nije navedena')}</p>
-            <p><strong>🔗 Link:</strong> <a href="{url}" style="color: #2980b9;">Otvori tender</a></p>
+            <p><strong>💰 Vrijednost:</strong> {tender.get('value', tender.get('vrijednost', 'Nije navedena'))}</p>
+            <p><strong>🔗 Link:</strong> <a href="{url}" style="color: #2980b9;">Otvori tender na CEJN</a></p>
         </div>
         """
     
     body += """
         <hr style="border: 1px solid #eee;">
         <p style="color: #7f8c8d; font-size: 12px;">
-            Ovo je automatska poruka. Za više informacija posetite portal javnih nabavki.
+            Ovo je automatska poruka. Za više informacija posjetite CEJN portal: cejn.gov.me
         </p>
     </body>
     </html>
     """
     
-    # Kreiraj email poruku
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From'] = Config.EMAIL_USER
@@ -175,7 +292,6 @@ def send_email(tenders: List[Dict]):
     msg.attach(MIMEText(body, 'html'))
     
     try:
-        # Pošalji email
         with smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT) as server:
             server.starttls()
             server.login(Config.EMAIL_USER, Config.EMAIL_PASSWORD)
@@ -191,14 +307,14 @@ def send_email(tenders: List[Dict]):
 def main():
     """Glavna funkcija - pokreće se jednom dnevno"""
     logger.info("=" * 50)
-    logger.info("🚀 Počinjem dnevnu proveru tendera...")
+    logger.info("🚀 Počinjem dnevnu proveru tendera sa CEJN-a...")
     
     # Učitaj već poslate tendere
     processed_tenders = load_processed_tenders()
     
-    # Preuzmi tendere sa portala
-    logger.info("📥 Preuzimam tendere sa portala...")
-    tenders = fetch_tenders_from_portal()
+    # Preuzmi tendere sa CEJN portala
+    logger.info("📥 Preuzimam tendere sa CEJN portala...")
+    tenders = fetch_tenders_from_cejn()
     logger.info(f"📊 Preuzeto {len(tenders)} tendera")
     
     # Filtriraj tendere
@@ -218,5 +334,22 @@ def main():
     logger.info("✅ Dnevna provera završena")
     logger.info("=" * 50)
 
+# Test funkcija za email
+def test_email():
+    test_tender = [{
+        'name': 'TEST TENDER - Mašinske instalacije, grijanje i klime CG',
+        'id': 'TEST-001',
+        'description': 'Ovo je test poruka da potvrdimo da email radi za CEJN tendere. Uključuje mašinske instalacije, grijanje, ventilaciju i klimatizaciju.',
+        'deadline': '31.12.2026',
+        'value': 'Test',
+        'url': 'https://cejn.gov.me'
+    }]
+    send_email(test_tender)
+    logger.info("Test email poslat!")
+
 if __name__ == "__main__":
+    # Za testiranje emaila - otkomentariši sljedeću liniju:
+    # test_email()
+    
+    # Za normalan rad:
     main()
