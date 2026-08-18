@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import smtplib
 import logging
 from datetime import datetime
@@ -24,6 +23,16 @@ CEJN_API_URL = (
 CEJN_TENDER_URL = (
     "https://cejn.gov.me/tenders/view-tender/"
 )
+
+
+# ============================================================
+# KOLIKO NAJNOVIJIH TENDERA PROVJERAVAMO
+# ============================================================
+
+PAGE_SIZE = 100
+MAX_PAGES = 5
+
+# 5 x 100 = 500 najnovijih tendera
 
 
 # ============================================================
@@ -51,14 +60,8 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# KLJUČNE RIJEČI
+# KLJUČNE RIJEČI - MAŠINSKE INSTALACIJE
 # ============================================================
-
-# ------------------------------------------------------------
-# VEOMA JAKE RIJEČI
-# Ako se pojavi jedna od njih, tender je vrlo vjerovatno
-# interesantan firmi Mašinac.
-# ------------------------------------------------------------
 
 HIGH_PRIORITY_KEYWORDS = [
 
@@ -89,7 +92,6 @@ HIGH_PRIORITY_KEYWORDS = [
 
     "sprinkler",
     "sprinklerski",
-    "sprinkler sistem",
 
     "odimljavanje",
     "odvođenje dima",
@@ -124,12 +126,6 @@ HIGH_PRIORITY_KEYWORDS = [
     "rashladna instalacija",
     "rashladne instalacije",
 
-    "sistem grijanja",
-    "sistem grejanja",
-
-    "sistem hlađenja",
-    "sistem hladjenja",
-
     "centralno grijanje",
     "centralno grejanje",
 
@@ -137,19 +133,14 @@ HIGH_PRIORITY_KEYWORDS = [
     "podno grejanje",
 
     "toplovod",
-    "toplovodna instalacija",
 
     "automatsko gašenje požara",
     "automatsko gasenje pozara",
 
-    "gašenje požara vodom",
-    "gasenje pozara vodom",
+    "gašenje požara",
+    "gasenje pozara"
 ]
 
-
-# ------------------------------------------------------------
-# DODATNE RIJEČI
-# ------------------------------------------------------------
 
 MEDIUM_PRIORITY_KEYWORDS = [
 
@@ -195,18 +186,12 @@ MEDIUM_PRIORITY_KEYWORDS = [
     "multi split",
 
     "chiller",
-
     "čiler",
     "ciler",
 
-    "pumpna stanica",
+    "pumpna stanica"
 ]
 
-
-# ------------------------------------------------------------
-# RIJEČI KOJE SAME NISU DOVOLJNE,
-# ALI MOGU UKAZATI NA VELIKI PROJEKAT
-# ------------------------------------------------------------
 
 PROJECT_KEYWORDS = [
 
@@ -220,6 +205,7 @@ PROJECT_KEYWORDS = [
     "bolnica",
     "škola",
     "skola",
+
     "vrtić",
     "vrtic",
 
@@ -234,12 +220,12 @@ PROJECT_KEYWORDS = [
     "dom zdravlja",
 
     "klinički centar",
-    "klinicki centar",
+    "klinicki centar"
 ]
 
 
 # ============================================================
-# NORMALIZACIJA TEKSTA
+# NORMALIZACIJA
 # ============================================================
 
 def normalize_text(text: str) -> str:
@@ -259,26 +245,20 @@ def normalize_text(text: str) -> str:
 
 
 # ============================================================
-# CEJN API
+# PREUZIMANJE CEJN TENDERA
 # ============================================================
 
 def fetch_tenders_from_cejn() -> List[Dict]:
-    """
-    Direktno preuzima objavljene tendere sa CEJN API-ja.
-
-    Koristimo status 64 = Published.
-
-    Podaci se preuzimaju stranicu po stranicu.
-    """
 
     logger.info("")
     logger.info("=" * 70)
-    logger.info("CEJN - PREUZIMANJE AKTIVNIH TENDERA")
+    logger.info("CEJN - PREUZIMANJE NAJNOVIJIH TENDERA")
     logger.info("=" * 70)
 
     session = requests.Session()
 
     session.headers.update({
+
         "User-Agent": (
             "Mozilla/5.0 "
             "(Windows NT 10.0; Win64; x64) "
@@ -286,39 +266,50 @@ def fetch_tenders_from_cejn() -> List[Dict]:
             "(KHTML, like Gecko) "
             "Chrome/130.0 Safari/537.36"
         ),
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "Origin": CEJN_BASE_URL,
-        "Referer": CEJN_BASE_URL + "/tenders"
+
+        "Accept":
+            "application/json, text/plain, */*",
+
+        "Content-Type":
+            "application/json",
+
+        "Origin":
+            CEJN_BASE_URL,
+
+        "Referer":
+            CEJN_BASE_URL + "/tenders"
     })
 
     all_tenders = []
 
-    page_size = 100
-    skip = 0
-
-    max_pages = 100
+    seen_ids = set()
 
     try:
 
-        for page_number in range(1, max_pages + 1):
+        for page_number in range(MAX_PAGES):
+
+            skip = page_number * PAGE_SIZE
 
             logger.info(
-                f"Preuzimam stranicu {page_number}..."
+                f"Preuzimam stranicu "
+                f"{page_number + 1}/{MAX_PAGES}"
             )
 
             payload = {
 
-                "pageSize": page_size,
+                "pageSize": PAGE_SIZE,
 
-                # 64 = Published
                 "tenderStatuses": [
-                    "64"
+                    "1",
+                    "512",
+                    "64",
+                    "4",
+                    "8"
                 ],
 
                 "skip": skip,
 
-                "top": page_size,
+                "top": PAGE_SIZE,
 
                 "procedureType": 0,
 
@@ -336,7 +327,8 @@ def fetch_tenders_from_cejn() -> List[Dict]:
 
                 "caStateId": 0,
 
-                "statuses": "64"
+                "statuses":
+                    "1,512,64,4,8"
             }
 
             response = session.post(
@@ -346,7 +338,8 @@ def fetch_tenders_from_cejn() -> List[Dict]:
             )
 
             logger.info(
-                f"HTTP status: {response.status_code}"
+                f"HTTP status: "
+                f"{response.status_code}"
             )
 
             response.raise_for_status()
@@ -361,17 +354,14 @@ def fetch_tenders_from_cejn() -> List[Dict]:
             if not isinstance(items, list):
 
                 logger.error(
-                    "CEJN odgovor nema očekivanu listu 'value'."
-                )
-
-                logger.info(
-                    f"Odgovor: {str(data)[:1000]}"
+                    "CEJN nije vratio očekivanu listu."
                 )
 
                 break
 
             logger.info(
-                f"Na stranici pronađeno: {len(items)}"
+                f"Vraćeno tendera: "
+                f"{len(items)}"
             )
 
             if not items:
@@ -386,80 +376,94 @@ def fetch_tenders_from_cejn() -> List[Dict]:
                 if not tender_id:
                     continue
 
-                tender = {
+                if tender_id in seen_ids:
+                    continue
 
-                    "id": tender_id,
+                seen_ids.add(
+                    tender_id
+                )
 
-                    "title": item.get(
-                        "title",
-                        ""
-                    ),
-
-                    "contract_authority": item.get(
-                        "contractAuthority",
-                        ""
-                    ),
-
-                    "contract_authority_id": item.get(
-                        "contractAuthorityId"
-                    ),
-
-                    "contract_type": item.get(
-                        "typeOfContractCaption",
-                        ""
-                    ),
-
-                    "procedure_type": item.get(
-                        "typeOfProcedureCaption",
-                        ""
-                    ),
-
-                    "publish_date": item.get(
-                        "publishDate",
-                        ""
-                    ),
-
-                    "created_date": item.get(
-                        "createdDate",
-                        ""
-                    ),
-
-                    "lifecycle": item.get(
-                        "lifecycle",
-                        ""
-                    ),
-
-                    "status": item.get(
+                lifecycle_caption = (
+                    item.get(
                         "lifecycleCaption",
                         ""
-                    ),
+                    )
+                    or ""
+                )
 
-                    "url": (
+                # --------------------------------------------
+                # SAMO TENDERI KOJI SU "U TOKU"
+                # --------------------------------------------
+
+                if normalize_text(
+                    lifecycle_caption
+                ) != "u toku":
+
+                    continue
+
+                tender = {
+
+                    "id":
+                        tender_id,
+
+                    "title":
+                        item.get(
+                            "title",
+                            ""
+                        ),
+
+                    "contract_authority":
+                        item.get(
+                            "contractAuthority",
+                            ""
+                        ),
+
+                    "contract_type":
+                        item.get(
+                            "typeOfContractCaption",
+                            ""
+                        ),
+
+                    "procedure_type":
+                        item.get(
+                            "typeOfProcedureCaption",
+                            ""
+                        ),
+
+                    "publish_date":
+                        item.get(
+                            "publishDate",
+                            ""
+                        ),
+
+                    "created_date":
+                        item.get(
+                            "createdDate",
+                            ""
+                        ),
+
+                    "status":
+                        lifecycle_caption,
+
+                    "url":
                         CEJN_TENDER_URL
                         + str(tender_id)
-                    )
                 }
 
                 all_tenders.append(
                     tender
                 )
 
-            # Ako je vraćeno manje od page_size,
-            # stigli smo do kraja.
-            if len(items) < page_size:
-                break
-
-            skip += page_size
-
         logger.info("")
         logger.info(
-            f"UKUPNO PREUZETO SA CEJN-a: "
+            f"AKTIVNIH 'U TOKU' "
+            f"MEĐU NAJNOVIJIH 500: "
             f"{len(all_tenders)}"
         )
 
         return all_tenders
 
-    except requests.RequestException as e:
+    except Exception as e:
 
         logger.exception(
             f"CEJN API greška: {e}"
@@ -467,17 +471,9 @@ def fetch_tenders_from_cejn() -> List[Dict]:
 
         return []
 
-    except Exception as e:
-
-        logger.exception(
-            f"Neočekivana CEJN greška: {e}"
-        )
-
-        return []
-
 
 # ============================================================
-# OCJENA RELEVANTNOSTI
+# ANALIZA RELEVANTNOSTI
 # ============================================================
 
 def analyze_tender(
@@ -499,17 +495,12 @@ def analyze_tender(
     found_medium = []
     found_project = []
 
-    # --------------------------------------------------------
-    # JAKE RIJEČI
-    # --------------------------------------------------------
-
+    # Jake riječi
     for keyword in HIGH_PRIORITY_KEYWORDS:
 
-        normalized_keyword = normalize_text(
+        if normalize_text(
             keyword
-        )
-
-        if normalized_keyword in text:
+        ) in text:
 
             score += 50
 
@@ -517,17 +508,12 @@ def analyze_tender(
                 keyword
             )
 
-    # --------------------------------------------------------
-    # SREDNJE RIJEČI
-    # --------------------------------------------------------
-
+    # Srednje riječi
     for keyword in MEDIUM_PRIORITY_KEYWORDS:
 
-        normalized_keyword = normalize_text(
+        if normalize_text(
             keyword
-        )
-
-        if normalized_keyword in text:
+        ) in text:
 
             score += 25
 
@@ -535,17 +521,12 @@ def analyze_tender(
                 keyword
             )
 
-    # --------------------------------------------------------
-    # PROJEKTNE RIJEČI
-    # --------------------------------------------------------
-
+    # Širi građevinski projekti
     for keyword in PROJECT_KEYWORDS:
 
-        normalized_keyword = normalize_text(
+        if normalize_text(
             keyword
-        )
-
-        if normalized_keyword in text:
+        ) in text:
 
             score += 5
 
@@ -558,19 +539,16 @@ def analyze_tender(
         100
     )
 
-    matched_keywords = (
-        found_high
-        + found_medium
-    )
-
     return {
 
         **tender,
 
-        "score": score,
+        "score":
+            score,
 
         "matched_keywords":
-            matched_keywords,
+            found_high
+            + found_medium,
 
         "project_keywords":
             found_project
@@ -587,7 +565,7 @@ def filter_tenders(
 
     logger.info("")
     logger.info("=" * 70)
-    logger.info("FILTRIRANJE MAŠINSKIH INSTALACIJA")
+    logger.info("FILTER - MAŠINSKE INSTALACIJE")
     logger.info("=" * 70)
 
     relevant = []
@@ -600,7 +578,7 @@ def filter_tenders(
             tender
         )
 
-        # Direktno relevantan
+        # Direktno relevantan tender
         if analyzed["score"] >= 25:
 
             relevant.append(
@@ -614,11 +592,20 @@ def filter_tenders(
                 f"{analyzed['title']}"
             )
 
-        # Širi građevinski projekat
-        elif analyzed["project_keywords"]:
+        # Adaptacija / rekonstrukcija / gradnja
+        # koja kasnije treba detaljniju provjeru
+        elif analyzed[
+            "project_keywords"
+        ]:
 
             possible_projects.append(
                 analyzed
+            )
+
+            logger.info(
+                f"ZA DETALJNU PROVJERU | "
+                f"{analyzed['id']} | "
+                f"{analyzed['title']}"
             )
 
     relevant.sort(
@@ -634,12 +621,12 @@ def filter_tenders(
 
     logger.info("")
     logger.info(
-        f"Direktno relevantnih tendera: "
+        f"Direktno relevantnih: "
         f"{len(relevant)}"
     )
 
     logger.info(
-        f"Potencijalnih velikih projekata: "
+        f"Građevinskih za detaljnu analizu: "
         f"{len(possible_projects)}"
     )
 
@@ -647,7 +634,7 @@ def filter_tenders(
 
 
 # ============================================================
-# EMAIL HTML
+# EMAIL
 # ============================================================
 
 def build_email_html(
@@ -660,43 +647,35 @@ def build_email_html(
 
     html = f"""
     <html>
-
     <body style="
-        margin:0;
-        padding:20px;
+        font-family:Arial,sans-serif;
         background:#f4f4f4;
-        font-family:Arial, sans-serif;
+        padding:20px;
     ">
 
     <div style="
         max-width:850px;
         margin:auto;
-        background:#ffffff;
+        background:white;
         padding:30px;
-        border-radius:8px;
+        border-radius:10px;
     ">
 
-    <h1 style="
-        margin-top:0;
-        font-size:26px;
-    ">
-        MAŠINAC — CEJN tenderi
-    </h1>
+    <h2>
+        MAŠINAC — novi CEJN tenderi
+    </h2>
 
     <p>
-        Automatska provjera CEJN portala
-        za mašinske instalacije.
-    </p>
-
-    <p>
-        <strong>Datum:</strong>
+        <strong>Datum provjere:</strong>
         {today}
     </p>
 
     <p>
-        <strong>Pronađeno:</strong>
-        {len(tenders)}
-        relevantnih tendera
+        Pronađeno
+        <strong>
+            {len(tenders)}
+        </strong>
+        potencijalno relevantnih tendera.
     </p>
     """
 
@@ -709,92 +688,88 @@ def build_email_html(
             )
         )
 
-        publish_date = tender.get(
-            "publish_date",
-            ""
-        )
-
-        if publish_date:
-            publish_date = (
-                publish_date
-                .replace("T", " ")
-                [:16]
+        publish_date = (
+            tender.get(
+                "publish_date",
+                ""
             )
+            .replace(
+                "T",
+                " "
+            )
+            [:16]
+        )
 
         html += f"""
 
         <div style="
-            margin-top:25px;
+            border:1px solid #ddd;
+            margin-top:20px;
             padding:20px;
-            border:1px solid #dddddd;
             border-radius:8px;
         ">
 
-            <div style="
-                font-size:13px;
-                color:#777777;
-            ">
-                CEJN #{tender['id']}
-            </div>
+        <div style="
+            color:#777;
+            font-size:13px;
+        ">
+            CEJN #{tender['id']}
+        </div>
 
-            <h2 style="
-                font-size:20px;
-                margin-bottom:10px;
-            ">
-                {tender['title']}
-            </h2>
+        <h3>
+            {tender['title']}
+        </h3>
 
-            <p>
-                <strong>Naručilac:</strong>
-                {tender['contract_authority']}
-            </p>
+        <p>
+            <strong>Naručilac:</strong>
+            {tender['contract_authority']}
+        </p>
 
-            <p>
-                <strong>Vrsta:</strong>
-                {tender['contract_type']}
-            </p>
+        <p>
+            <strong>Vrsta:</strong>
+            {tender['contract_type']}
+        </p>
 
-            <p>
-                <strong>Postupak:</strong>
-                {tender['procedure_type']}
-            </p>
+        <p>
+            <strong>Postupak:</strong>
+            {tender['procedure_type']}
+        </p>
 
-            <p>
-                <strong>Objavljeno:</strong>
-                {publish_date}
-            </p>
+        <p>
+            <strong>Status:</strong>
+            {tender['status']}
+        </p>
 
-            <p>
-                <strong>Status:</strong>
-                {tender['status']}
-            </p>
+        <p>
+            <strong>Objavljeno:</strong>
+            {publish_date}
+        </p>
 
-            <p>
-                <strong>Relevantnost:</strong>
-                {tender['score']}%
-            </p>
+        <p>
+            <strong>Relevantnost:</strong>
+            {tender['score']}%
+        </p>
 
-            <p>
-                <strong>Pronađene riječi:</strong>
-                {keywords}
-            </p>
+        <p>
+            <strong>Pronađeno:</strong>
+            {keywords}
+        </p>
 
-            <p>
-                <a
-                    href="{tender['url']}"
-                    style="
-                        display:inline-block;
-                        padding:12px 18px;
-                        background:#222222;
-                        color:#ffffff;
-                        text-decoration:none;
-                        border-radius:5px;
-                        font-weight:bold;
-                    "
-                >
-                    OTVORI TENDER
-                </a>
-            </p>
+        <p>
+            <a
+                href="{tender['url']}"
+                style="
+                    display:inline-block;
+                    background:#202020;
+                    color:white;
+                    padding:12px 18px;
+                    text-decoration:none;
+                    border-radius:5px;
+                "
+            >
+                OTVORI TENDER NA CEJN
+            </a>
+        </p>
 
         </div>
 
@@ -802,14 +777,14 @@ def build_email_html(
 
     html += """
 
-        <p style="
-            margin-top:35px;
-            color:#888888;
-            font-size:12px;
-        ">
-            Automatski CEJN Tender Monitor
-            — Mašinac d.o.o.
-        </p>
+    <p style="
+        margin-top:30px;
+        color:#888;
+        font-size:12px;
+    ">
+        Automatski CEJN Tender Monitor
+        — Mašinac d.o.o.
+    </p>
 
     </div>
 
@@ -819,10 +794,6 @@ def build_email_html(
 
     return html
 
-
-# ============================================================
-# SLANJE EMAILA
-# ============================================================
 
 def send_email(
     tenders: List[Dict]
@@ -840,26 +811,14 @@ def send_email(
 
         return
 
-    if not EMAIL_FROM:
+    if (
+        not EMAIL_FROM
+        or not EMAIL_PASSWORD
+        or not EMAIL_TO
+    ):
 
         logger.error(
-            "Nije podešen EMAIL_FROM."
-        )
-
-        return
-
-    if not EMAIL_PASSWORD:
-
-        logger.error(
-            "Nije podešen EMAIL_PASSWORD."
-        )
-
-        return
-
-    if not EMAIL_TO:
-
-        logger.error(
-            "Nije podešen EMAIL_TO."
+            "Email secrets nijesu podešeni."
         )
 
         return
@@ -870,8 +829,8 @@ def send_email(
 
     subject = (
         f"MAŠINAC | "
-        f"{len(tenders)} CEJN tendera | "
-        f"{today}"
+        f"{len(tenders)} relevantnih CEJN tendera "
+        f"| {today}"
     )
 
     message = MIMEMultipart(
@@ -882,13 +841,11 @@ def send_email(
     message["From"] = EMAIL_FROM
     message["To"] = EMAIL_TO
 
-    html = build_email_html(
-        tenders
-    )
-
     message.attach(
         MIMEText(
-            html,
+            build_email_html(
+                tenders
+            ),
             "html",
             "utf-8"
         )
@@ -896,7 +853,6 @@ def send_email(
 
     try:
 
-        logger.info("")
         logger.info(
             "Šaljem email..."
         )
@@ -926,7 +882,7 @@ def send_email(
     except Exception as e:
 
         logger.exception(
-            f"Greška pri slanju emaila: {e}"
+            f"Greška pri emailu: {e}"
         )
 
 
@@ -949,61 +905,36 @@ def main():
         "============================================="
     )
 
-    # --------------------------------------------------------
-    # 1. PREUZIMANJE
-    # --------------------------------------------------------
-
     tenders = fetch_tenders_from_cejn()
 
     if not tenders:
 
         logger.warning(
-            "Nema preuzetih tendera."
+            "Nema aktivnih tendera za analizu."
         )
 
         return
 
-    # --------------------------------------------------------
-    # 2. FILTER
-    # --------------------------------------------------------
-
     relevant = filter_tenders(
         tenders
     )
-
-    # --------------------------------------------------------
-    # 3. REZULTATI
-    # --------------------------------------------------------
 
     logger.info("")
     logger.info("=" * 70)
     logger.info("REZULTAT")
     logger.info("=" * 70)
 
-    if relevant:
-
-        for tender in relevant:
-
-            logger.info(
-                f"{tender['score']}% | "
-                f"{tender['id']} | "
-                f"{tender['title']}"
-            )
-
-            logger.info(
-                tender["url"]
-            )
-
-    else:
+    for tender in relevant:
 
         logger.info(
-            "Danas nema direktno "
-            "relevantnih tendera."
+            f"{tender['score']}% | "
+            f"{tender['id']} | "
+            f"{tender['title']}"
         )
 
-    # --------------------------------------------------------
-    # 4. EMAIL
-    # --------------------------------------------------------
+        logger.info(
+            tender["url"]
+        )
 
     send_email(
         relevant
