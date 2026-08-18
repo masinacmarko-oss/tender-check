@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
 
   schedule:
+    # 06:00 UTC
+    # Crna Gora:
+    # 08:00 tokom ljetnjeg računanja vremena
+    # 07:00 tokom zimskog računanja vremena
     - cron: "0 6 * * *"
 
 jobs:
@@ -26,6 +30,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Show version check
+        run: |
+          echo "=== daily_tender_check.py VERSION ==="
+          grep 'VERSION =' daily_tender_check.py || true
+          grep 'MAX_PAGES =' daily_tender_check.py || true
 
       - name: Run CEJN Tender Monitor
         env:
