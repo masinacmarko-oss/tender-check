@@ -1,23 +1,21 @@
-name: Daily Tender Check
+name: Daily CEJN Tender Check
 
 on:
-  workflow_dispatch:
-
   schedule:
-    # Pokretanje svakog dana u 06:00 UTC
+    # 06:00 UTC svakog dana (08:00 po crnogorskom ljetnjem vremenu)
     - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
   tender-check:
-
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,15 +27,20 @@ jobs:
 
       - name: Show version check
         run: |
-          echo "=== MAŠINAC CEJN VERSION CHECK ==="
-          grep 'VERSION =' daily_tender_check.py || true
-          grep 'PAGE_SIZE =' daily_tender_check.py || true
-          grep 'MAX_PAGES =' daily_tender_check.py || true
+          echo "=============================================="
+          echo "PROVJERA VERZIJE KODA KOJI SE IZVRSAVA"
+          echo "=============================================="
+          grep -m 1 "^VERSION" daily_tender_check.py
+          grep -m 1 "^PAGE_SIZE" daily_tender_check.py
+          grep -m 1 "^MAX_PAGES" daily_tender_check.py
+          echo "=============================================="
+          echo "Commit: ${{ github.sha }}"
+          echo "=============================================="
 
-      - name: Run CEJN Tender Monitor
+      - name: Run tender check
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-        run: |
-          python daily_tender_check.py
+          PYTHONUNBUFFERED: "1"
+        run: python daily_tender_check.py
